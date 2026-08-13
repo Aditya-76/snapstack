@@ -1,45 +1,51 @@
 /**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
+ * Screenshot Brain — your screenshots, finally searchable and actionable.
+ * 100% on-device.
  */
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import { StatusBar, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { startCapture } from './src/capture/captureService';
+import { AppNavigator } from './src/navigation';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { useAppStore } from './src/store/appStore';
+import { colors } from './src/theme';
 
 function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+  const [ready, setReady] = useState(false);
+  const { settings, loadSettings, refreshLibrary, refreshReminders } = useAppStore();
+
+  useEffect(() => {
+    void (async () => {
+      await loadSettings();
+      const s = useAppStore.getState().settings;
+      if (s.onboardingCompleted) {
+        await startCapture();
+        await Promise.all([refreshLibrary(), refreshReminders()]);
+      }
+      setReady(true);
+    })();
+  }, [loadSettings, refreshLibrary, refreshReminders]);
+
+  if (!ready) {
+    return <View style={styles.splash} />;
+  }
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      {settings.onboardingCompleted ? (
+        <AppNavigator />
+      ) : (
+        <OnboardingScreen onComplete={() => useAppStore.setState(s => ({ settings: { ...s.settings } }))} />
+      )}
     </SafeAreaProvider>
   );
 }
 
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  splash: { flex: 1, backgroundColor: colors.background },
 });
 
 export default App;
