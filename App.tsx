@@ -34,7 +34,7 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      <StatusBar barStyle="light-content" />
       {settings.onboardingCompleted ? (
         <AppNavigator />
       ) : (

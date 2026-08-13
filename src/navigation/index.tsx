@@ -19,6 +19,10 @@ import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Screens take narrow structural prop types (only what they use) rather than
+// the full React Navigation generics; cast at the registration boundary.
+const asScreen = (c: unknown) => c as React.ComponentType;
+
 const navTheme = {
   ...DarkTheme,
   colors: {
@@ -51,10 +55,10 @@ function Tabs() {
         ),
       })}
     >
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Ask" component={ChatScreen} />
-      <Tab.Screen name="Reminders" component={RemindersScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Search" component={asScreen(SearchScreen)} />
+      <Tab.Screen name="Ask" component={asScreen(ChatScreen)} />
+      <Tab.Screen name="Reminders" component={asScreen(RemindersScreen)} />
+      <Tab.Screen name="Settings" component={asScreen(SettingsScreen)} />
     </Tab.Navigator>
   );
 }
@@ -69,8 +73,8 @@ export function AppNavigator() {
         }}
       >
         <Stack.Screen name="Home" component={Tabs} options={{ headerShown: false }} />
-        <Stack.Screen name="Detail" component={DetailScreen} options={{ title: 'Screenshot' }} />
-        <Stack.Screen name="Activity" component={ActivityLogScreen} options={{ title: 'Activity log' }} />
+        <Stack.Screen name="Detail" component={asScreen(DetailScreen)} options={{ title: 'Screenshot' }} />
+        <Stack.Screen name="Activity" component={asScreen(ActivityLogScreen)} options={{ title: 'Activity log' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

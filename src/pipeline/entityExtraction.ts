@@ -105,7 +105,9 @@ const UTR_RE = /\b(?:utr|ref(?:erence)?\s*(?:no|number|id)?|txn\s*(?:id|no|ref)?
 const PNR_RE = /\bpnr\s*(?:no|number|status)?\s*[:#.]?\s*(\d{3}[- ]?\d{7}|\d{10})\b/gi;
 
 // Flight booking references: 6-char alphanumeric labeled as PNR/booking ref.
-const FLIGHT_PNR_RE = /\b(?:booking\s*(?:id|ref(?:erence)?|no)|confirmation\s*(?:no|code|number)|pnr)\s*[:#.]?\s*([A-Z0-9]{6})\b/g;
+// The label matches case-insensitively; the code itself must be uppercase
+// with at least one digit (checked after matching).
+const FLIGHT_PNR_RE = /\b(?:booking\s*(?:id|ref(?:erence)?|no)|confirmation\s*(?:no|code|number)|pnr)\s*[:#.]?\s*([A-Za-z0-9]{6})\b/gi;
 
 const PHONE_RE = /(?:\+91[\s-]?|0)?([6-9]\d{4})[\s-]?(\d{5})\b/g;
 
@@ -201,7 +203,10 @@ export function extractEntities(text: string, now: Date = new Date()): Entity[] 
 
   // --- Flight/hotel booking refs ---
   for (const m of text.matchAll(FLIGHT_PNR_RE)) {
-    const val = m[1].toUpperCase();
+    const val = m[1];
+    if (val !== val.toUpperCase() || !/\d/.test(val)) {
+      continue;
+    }
     if (!entities.some(e => e.type === 'booking_id' && e.value === val)) {
       entities.push({ type: 'booking_id', raw: m[0].trim(), value: val, confidence: 0.8 });
     }

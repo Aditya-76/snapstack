@@ -28,10 +28,11 @@ export function SettingsScreen() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
-    if (llmProgress != null && llmProgress < 1 && Ml) {
+    const ml = Ml;
+    if (llmProgress != null && llmProgress < 1 && ml) {
       timer = setInterval(async () => {
         try {
-          const p = await Ml.getLlmDownloadProgress();
+          const p = await ml.getLlmDownloadProgress();
           setLlmProgress(p);
           if (p >= 1) {
             await updateSettings({ llmPackInstalled: true });

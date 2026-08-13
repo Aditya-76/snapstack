@@ -16,10 +16,7 @@ import {
 } from '../types';
 import { KeywordHit, SnapStore, makeSnippet, tokenize } from './store';
 
-export function passesFilters(record: ScreenshotRecord, filters?: SearchFilters): boolean {
-  if (!filters) {
-    return true;
-  }
+export function passesFilters(record: ScreenshotRecord, filters: SearchFilters = {}): boolean {
   if (filters.categories && filters.categories.length > 0 && !filters.categories.includes(record.category)) {
     return false;
   }

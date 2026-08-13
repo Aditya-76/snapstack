@@ -1,97 +1,63 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Screenshot Brain
 
-# Getting Started
+**Your screenshots, finally searchable and actionable — 100% on your device.**
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Screenshot Brain indexes the text inside your screenshots (bills, UPI payments, bookings, coupons, IDs, job posts) and makes them searchable, askable, and actionable — without a single byte leaving your phone.
 
-## Step 1: Start Metro
+Built with React Native (iOS + Android) + native Kotlin/Swift pipeline modules, per the [product PRD](docs/PRD.md).
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+## What works
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+- **Ingestion** — Android: near-real-time MediaStore `ContentObserver` on the Screenshots collection; iOS: `PHPhotoLibraryChangeObserver` + on-open sweeps. Share-target import on Android. Optional backfill (30 days / 6 months / everything) with progress UI.
+- **Pipeline (on-device)** — OCR (ML Kit on Android, Vision on iOS) → rules-based classification into 9 categories → regex entity extraction tuned for India (₹ amounts, due dates, UPI VPAs & UTRs, train PNRs, flight booking refs, phones, coupon codes + expiry, tracking IDs) → embedding → SQLite.
+- **Storage** — one SQLite file: FTS5 for keyword search, embeddings as BLOBs for semantic search, reminders, activity log, settings. Originals are never copied; only extracted text + a ~256px thumbnail (~15–20 KB per screenshot). Extracted data survives gallery deletion.
+- **Search** — hybrid keyword (BM25) + semantic (cosine) merged with Reciprocal Rank Fusion; category/date/source-app filters; sensitive categories (Aadhaar/PAN) hidden from previews by default.
+- **Q&A chat** — local RAG: retrieve top-k screenshots → on-device LLM answers with the screenshots shown as citations. Degrades to search-only (clearly messaged) when the optional LLM pack isn't installed or the device is below the 4 GB floor.
+- **Reminders & actions** — due dates, booking dates and coupon expiries become one-tap reminder suggestions; per-category fully-automatic mode (opt-in) with an always-visible, undoable Activity log. Quick actions: copy code/PNR, call number, open address.
+- **Native notification scheduling** — AlarmManager + BroadcastReceiver (Android), UNUserNotificationCenter (iOS).
+
+## What's stubbed (v1 wiring points)
+
+- **Embedding/LLM inference backends** — the `MlModule` native modules own model-file lifecycle (staged, Wi-Fi-only LLM pack download) and readiness checks, but the ONNX Runtime (MiniLM/BGE-small) and llama.cpp (Qwen/Gemma/Llama 1–2B, 4-bit) sessions are not linked yet. Until then the app runs on FTS + a deterministic hash-embedding fallback, exactly the degrade path used below the device floor.
+- **iOS Xcode target registration** — the Swift native modules need a one-time Xcode setup; see [docs/NATIVE_MODULES.md](docs/NATIVE_MODULES.md).
+- Encrypted backup/restore to iCloud/Drive, app-lock biometrics, and the iOS share extension are scaffolded in settings/types but not implemented.
+
+## Getting started
 
 ```sh
-# Using npm
-npm start
+npm install
 
-# OR using Yarn
-yarn start
-```
-
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
+# Android (device/emulator connected)
 npm run android
 
-# OR using Yarn
-yarn android
-```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+# iOS
+cd ios && bundle install && bundle exec pod install && cd ..
 npm run ios
-
-# OR using Yarn
-yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Development
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```sh
+npm test          # 40 unit tests: extraction, classification, search, reminders, pipeline
+npx tsc --noEmit  # typecheck
+npm run lint
+```
 
-## Step 3: Modify your app
+Architecture overview: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-Now that you have successfully run the app, let's make changes!
+## Project layout
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+```
+src/
+  types/        domain types (categories, entities, records, settings)
+  pipeline/     OCR→classify→extract→embed orchestration (pure TS, DI for tests)
+  db/           SnapStore interface; SQLite/FTS5 impl + in-memory fallback
+  search/       hybrid keyword+semantic search (RRF merge)
+  qa/           local RAG Q&A with citations
+  reminders/    action detection, suggestion lifecycle, activity log
+  capture/      screenshot event subscription + foreground sweeps
+  native/       typed JS bridge to the native modules (graceful fallbacks)
+  screens/ components/ navigation/ store/ theme/   UI
+android/app/src/main/java/com/screenshotbrain/nativemodules/   Kotlin modules
+ios/ScreenshotBrain/NativeModules/                             Swift modules
+```

@@ -70,8 +70,8 @@ export async function startCapture(): Promise<void> {
   }
   const emitter: NativeEventEmitter | null = screenshotEventEmitter();
   if (emitter && !subscription) {
-    subscription = emitter.addListener('onNewScreenshot', (asset: NativeScreenshotAsset) => {
-      void handleNewAsset(asset);
+    subscription = emitter.addListener('onNewScreenshot', (asset: unknown) => {
+      void handleNewAsset(asset as NativeScreenshotAsset);
     });
   }
   try {
