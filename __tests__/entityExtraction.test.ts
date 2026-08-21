@@ -85,4 +85,42 @@ describe('extractEntities', () => {
     const entities = extractEntities('₹500 and again ₹500', NOW);
     expect(byType(entities, 'amount')).toHaveLength(1);
   });
+
+  it('extracts PIN-code-anchored addresses', () => {
+    const entities = extractEntities(
+      'Delivery Address\nFlat 12B, Green Park Apartments\n4th Cross, Indiranagar\nBengaluru 560038',
+      NOW,
+    );
+    const addr = byType(entities, 'address');
+    expect(addr).toHaveLength(1);
+    expect(addr[0].value).toContain('560038');
+    expect(addr[0].value).toContain('Indiranagar');
+  });
+
+  // Regression tests for QA-found false positives/negatives.
+  it('does not treat words ending in "rs" as rupee markers', () => {
+    expect(byType(extractEntities('Mega sale: all offers 20% off', NOW), 'amount')).toHaveLength(0);
+    expect(byType(extractEntities('2 users 300 points', NOW), 'amount')).toHaveLength(0);
+  });
+
+  it('does not fabricate a day from "Month YYYY"', () => {
+    const entities = extractEntities('Membership valid till Aug 2026', NOW);
+    expect(byType(entities, 'due_date')).toHaveLength(0);
+    expect(byType(entities, 'date')).toHaveLength(0);
+  });
+
+  it('does not parse decimals as dates', () => {
+    expect(byType(extractEntities('Rated 4.5 stars, version 2.3', NOW), 'date')).toHaveLength(0);
+  });
+
+  it('does not extract phone numbers from inside longer digit runs', () => {
+    expect(byType(extractEntities('UTR: 987654321012', NOW), 'phone')).toHaveLength(0);
+  });
+
+  it('extracts ALL-CAPS coupon banners', () => {
+    const caps = extractEntities('USE CODE WELCOME50 AT CHECKOUT', NOW);
+    expect(byType(caps, 'coupon_code').map(e => e.value)).toEqual(['WELCOME50']);
+    const mixed = extractEntities('Use Code: FLAT50 today', NOW);
+    expect(byType(mixed, 'coupon_code').map(e => e.value)).toEqual(['FLAT50']);
+  });
 });

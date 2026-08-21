@@ -39,18 +39,16 @@ describe('hybridSearch', () => {
     expect(bookingsOnly.every(r => r.screenshot.category === 'booking')).toBe(true);
   });
 
-  it('excludes sensitive categories from results by default', async () => {
+  it('keeps sensitive categories findable (only previews are masked, in the UI)', async () => {
     const store = new MemoryStore();
     await store.init();
     await store.upsertScreenshot(
       makeRecord({ ocrText: 'Aadhaar card number 1234 5678 9012', category: 'id_document' }),
     );
 
-    const hidden = await hybridSearch(store, 'aadhaar card');
-    expect(hidden).toHaveLength(0);
-
-    const optedIn = await hybridSearch(store, 'aadhaar card', { includeSensitive: true });
-    expect(optedIn).toHaveLength(1);
+    const results = await hybridSearch(store, 'aadhaar card');
+    expect(results).toHaveLength(1);
+    expect(results[0].screenshot.category).toBe('id_document');
 
     const explicitFilter = await hybridSearch(store, 'aadhaar card', { categories: ['id_document'] });
     expect(explicitFilter).toHaveLength(1);

@@ -12,7 +12,11 @@ class ScreenshotBrainPackage : ReactPackage {
           OcrModule(reactContext),
           ThumbnailModule(reactContext),
           NotificationsModule(reactContext),
-          MlModule(reactContext))
+          MlModule(reactContext),
+          BackupModule(reactContext),
+          AppLockModule(reactContext),
+          ShareImportModule(reactContext),
+          SecureStoreModule(reactContext))
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
       emptyList()

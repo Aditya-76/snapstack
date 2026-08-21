@@ -8,10 +8,8 @@ import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.provider.MediaStore
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -19,6 +17,9 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.modules.core.PermissionAwareActivity
+import com.facebook.react.modules.core.PermissionListener
+import androidx.core.content.ContextCompat
 
 /**
  * Watches MediaStore for new screenshots (PRD §4.2 Android: near-real-time via
@@ -37,6 +38,8 @@ class ScreenshotObserverModule(private val reactContext: ReactApplicationContext
 
   private var observer: ContentObserver? = null
   private var lastEmittedId: Long = -1
+  /** MediaStore queries run off the main thread (camera bursts would jank UI). */
+  private var observerThread: HandlerThread? = null
 
   override fun getName(): String = NAME
 
@@ -62,37 +65,36 @@ class ScreenshotObserverModule(private val reactContext: ReactApplicationContext
       promise.resolve("granted")
       return
     }
-    val activity = currentActivity
+    val activity = currentActivity as? PermissionAwareActivity
     if (activity == null) {
       promise.resolve("denied")
       return
     }
-    ActivityCompat.requestPermissions(activity, arrayOf(requiredPermission()), PERMISSION_REQUEST_CODE)
-    // Poll for the result: keeps the module free of PermissionListener plumbing.
-    val handler = Handler(Looper.getMainLooper())
-    var attempts = 0
-    val check = object : Runnable {
-      override fun run() {
-        when {
-          hasPermission() -> promise.resolve("granted")
-          attempts >= 60 -> promise.resolve("denied")
-          else -> {
-            attempts += 1
-            handler.postDelayed(this, 500)
-          }
-        }
+    val listener = PermissionListener { requestCode, _, grantResults ->
+      if (requestCode == PERMISSION_REQUEST_CODE) {
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        promise.resolve(if (granted) "granted" else "denied")
+        true
+      } else {
+        false
       }
     }
-    handler.postDelayed(check, 500)
+    activity.requestPermissions(arrayOf(requiredPermission()), PERMISSION_REQUEST_CODE, listener)
   }
 
   private fun isScreenshotSelection(): Pair<String, Array<String>?> {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-      Pair("${MediaStore.Images.Media.IS_SCREENSHOT} = 1", null)
-    } else {
-      Pair(
-          "(${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} = ?)",
-          arrayOf("%Screenshots%", "Screenshots"))
+    return when {
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+          Pair("${MediaStore.Images.Media.IS_SCREENSHOT} = 1", null)
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+          Pair(
+              "(${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR ${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} = ?)",
+              arrayOf("%Screenshots%", "Screenshots"))
+      else ->
+          // RELATIVE_PATH doesn't exist before API 29 — fall back to DATA.
+          Pair(
+              "(${MediaStore.Images.Media.DATA} LIKE ? OR ${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} = ?)",
+              arrayOf("%/Screenshots/%", "Screenshots"))
     }
   }
 
@@ -159,8 +161,11 @@ class ScreenshotObserverModule(private val reactContext: ReactApplicationContext
       promise.resolve(null)
       return
     }
-    val handler = Handler(Looper.getMainLooper())
-    observer = object : ContentObserver(handler) {
+    // Dedicated thread: onChange fires for every image insert on the device
+    // (camera bursts, WhatsApp downloads) and runs a MediaStore query.
+    val thread = HandlerThread("screenshot-observer").also { it.start() }
+    observerThread = thread
+    observer = object : ContentObserver(Handler(thread.looper)) {
       override fun onChange(selfChange: Boolean, uri: Uri?) {
         emitLatestScreenshot()
       }
@@ -209,11 +214,20 @@ class ScreenshotObserverModule(private val reactContext: ReactApplicationContext
   fun stopObserving(promise: Promise) {
     observer?.let { reactContext.contentResolver.unregisterContentObserver(it) }
     observer = null
+    observerThread?.quitSafely()
+    observerThread = null
     promise.resolve(null)
   }
 
   @ReactMethod
   fun assetExists(assetId: String, promise: Promise) {
+    // "Unknown" must never read as "deleted": without permission (or on a
+    // query failure) reject so the retention sweep skips, instead of
+    // mass-marking the library as deleted.
+    if (!hasPermission()) {
+      promise.reject("no_permission", "photo permission not granted")
+      return
+    }
     try {
       reactContext.contentResolver.query(
           Uri.parse(assetId), arrayOf(MediaStore.Images.Media._ID), null, null, null)?.use { cursor ->
@@ -222,7 +236,7 @@ class ScreenshotObserverModule(private val reactContext: ReactApplicationContext
       }
       promise.resolve(false)
     } catch (e: Exception) {
-      promise.resolve(false)
+      promise.reject("query_failed", e)
     }
   }
 

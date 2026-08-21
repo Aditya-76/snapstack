@@ -72,9 +72,21 @@ export function ChatScreen({ navigation }: { navigation: { navigate: (screen: st
       <View style={styles.header}>
         <Text style={typography.title}>Ask your screenshots</Text>
         <Text style={typography.secondary}>
-          {qaAvailable ? 'Answers generated on-device — nothing leaves your phone' : 'Search-only mode · enable Q&A model in Settings'}
+          {qaAvailable
+            ? 'Answers generated on-device — nothing leaves your phone'
+            : 'Totals and counts work now · full answers need the Q&A model'}
         </Text>
       </View>
+      {!qaAvailable ? (
+        <TouchableOpacity
+          style={styles.enableQaBanner}
+          onPress={() => navigation.navigate('Settings' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Enable Q&A: one-time 400 megabyte download, stays on your phone"
+        >
+          <Text style={styles.enableQaText}>Enable full Q&A · one-time ~400 MB download, stays on your phone →</Text>
+        </TouchableOpacity>
+      ) : null}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <FlatList
           ref={listRef}
@@ -82,6 +94,8 @@ export function ChatScreen({ navigation }: { navigation: { navigate: (screen: st
           keyExtractor={m => m.id}
           renderItem={renderMessage}
           contentContainerStyle={styles.list}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           ListEmptyComponent={
             <View>
@@ -107,7 +121,13 @@ export function ChatScreen({ navigation }: { navigation: { navigate: (screen: st
             onSubmitEditing={() => send(draft)}
             returnKeyType="send"
           />
-          <TouchableOpacity style={styles.sendButton} onPress={() => send(draft)} disabled={answering}>
+          <TouchableOpacity
+            style={[styles.sendButton, answering && styles.sendButtonDisabled]}
+            onPress={() => send(draft)}
+            disabled={answering}
+            accessibilityRole="button"
+            accessibilityLabel="Send question"
+          >
             <Text style={styles.sendLabel}>Send</Text>
           </TouchableOpacity>
         </View>
@@ -162,10 +182,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   sendButton: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentStrong,
     borderRadius: radius.md,
     paddingHorizontal: spacing.lg,
+    minHeight: 44,
     justifyContent: 'center',
   },
+  sendButtonDisabled: { opacity: 0.4 },
   sendLabel: { color: '#fff', fontWeight: '600' },
+  enableQaBanner: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  enableQaText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
 });

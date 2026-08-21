@@ -50,6 +50,10 @@ interface OcrModule {
 interface ThumbnailModule {
   /** Create & cache a small WebP/JPEG thumbnail; returns file path (PRD §6). */
   createThumbnail(assetId: string, maxDimension: number, quality: number): Promise<string>;
+  /** iOS in-app full-res viewer source (PRD §4.6); temp file path. */
+  getFullImage?(assetId: string): Promise<string>;
+  /** Remove a cached thumbnail (retention purge, PRD §6). */
+  deleteThumbnail?(path: string): Promise<void>;
 }
 
 interface NotificationsModule {
@@ -72,6 +76,25 @@ interface MlModule {
   getLlmDownloadProgress(): Promise<number>;
 }
 
+interface BackupModuleType {
+  /** Write content to a file and open the OS share sheet (Drive/iCloud/files). */
+  exportFile(fileName: string, content: string): Promise<boolean>;
+  /** Open the OS document picker and return the picked file's text content (null if cancelled). */
+  importFile(): Promise<string | null>;
+}
+
+interface AppLockModuleType {
+  /** True if the device has biometrics (or device credential) enrolled. */
+  isAvailable(): Promise<boolean>;
+  /** Prompt biometric/device-credential auth; resolves true on success. */
+  authenticate(reason: string): Promise<boolean>;
+}
+
+interface ShareImportModuleType {
+  /** Image URI the app was launched with via the OS share sheet, then cleared. Null if none. */
+  consumePendingSharedImage(): Promise<NativeScreenshotAsset | null>;
+}
+
 function optionalModule<T>(name: string): T | null {
   const mod = NativeModules[name];
   return mod ? (mod as T) : null;
@@ -82,6 +105,9 @@ export const Ocr = optionalModule<OcrModule>('OcrModule');
 export const Thumbnails = optionalModule<ThumbnailModule>('ThumbnailModule');
 export const Notifications = optionalModule<NotificationsModule>('NotificationsModule');
 export const Ml = optionalModule<MlModule>('MlModule');
+export const Backup = optionalModule<BackupModuleType>('BackupModule');
+export const AppLock = optionalModule<AppLockModuleType>('AppLockModule');
+export const ShareImport = optionalModule<ShareImportModuleType>('ShareImportModule');
 
 export function screenshotEventEmitter(): NativeEventEmitter | null {
   if (!ScreenshotObserver) {

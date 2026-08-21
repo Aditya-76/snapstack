@@ -22,7 +22,6 @@ import {
   ReminderSuggestion,
   ScreenshotRecord,
   SearchFilters,
-  SENSITIVE_CATEGORIES,
   Settings,
 } from '../types';
 import { KeywordHit, makeSnippet, SnapStore } from './store';
@@ -42,6 +41,7 @@ const SCHEMA = [
     source_app TEXT,
     thumbnail_path TEXT,
     original_deleted INTEGER NOT NULL DEFAULT 0,
+    original_deleted_at INTEGER,
     embedding BLOB
   )`,
   `CREATE INDEX IF NOT EXISTS idx_screenshots_taken_at ON screenshots(taken_at DESC)`,
@@ -119,6 +119,7 @@ function rowToRecord(row: Row): ScreenshotRecord {
     sourceApp: row.source_app == null ? null : String(row.source_app),
     thumbnailPath: row.thumbnail_path == null ? null : String(row.thumbnail_path),
     originalDeleted: Number(row.original_deleted) === 1,
+    originalDeletedAt: row.original_deleted_at == null ? null : Number(row.original_deleted_at),
     embedding: blobToEmbedding(row.embedding),
   };
 }
@@ -132,10 +133,6 @@ function filterSql(filters?: SearchFilters, alias: string = 's'): { where: strin
   if (explicitCategories.length > 0) {
     clauses.push(`${alias}.category IN (${explicitCategories.map(() => '?').join(',')})`);
     params.push(...explicitCategories);
-  } else if (!filters?.includeSensitive) {
-    // Hide sensitive categories unless explicitly filtered-for or opted-in (PRD §7.7).
-    clauses.push(`${alias}.category NOT IN (${SENSITIVE_CATEGORIES.map(() => '?').join(',')})`);
-    params.push(...SENSITIVE_CATEGORIES);
   }
   if (filters?.fromDate != null) {
     clauses.push(`${alias}.taken_at >= ?`);
@@ -189,14 +186,14 @@ export class SqliteStore implements SnapStore {
   async upsertScreenshot(r: ScreenshotRecord): Promise<void> {
     await this.db.execute(
       `INSERT INTO screenshots (id, asset_id, taken_at, indexed_at, ocr_text, category, category_confidence,
-        entities_json, source_app, thumbnail_path, original_deleted, embedding)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        entities_json, source_app, thumbnail_path, original_deleted, original_deleted_at, embedding)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
         asset_id=excluded.asset_id, taken_at=excluded.taken_at, indexed_at=excluded.indexed_at,
         ocr_text=excluded.ocr_text, category=excluded.category, category_confidence=excluded.category_confidence,
         entities_json=excluded.entities_json, source_app=excluded.source_app,
         thumbnail_path=excluded.thumbnail_path, original_deleted=excluded.original_deleted,
-        embedding=excluded.embedding`,
+        original_deleted_at=excluded.original_deleted_at, embedding=excluded.embedding`,
       [
         r.id,
         r.assetId,
@@ -209,6 +206,7 @@ export class SqliteStore implements SnapStore {
         r.sourceApp,
         r.thumbnailPath,
         r.originalDeleted ? 1 : 0,
+        r.originalDeletedAt,
         r.embedding ? (embeddingToBlob(r.embedding) as unknown as string) : null,
       ],
     );
@@ -229,7 +227,10 @@ export class SqliteStore implements SnapStore {
   }
 
   async markOriginalDeleted(assetId: string): Promise<void> {
-    await this.db.execute('UPDATE screenshots SET original_deleted = 1 WHERE asset_id = ?', [assetId]);
+    await this.db.execute(
+      'UPDATE screenshots SET original_deleted = 1, original_deleted_at = COALESCE(original_deleted_at, ?) WHERE asset_id = ?',
+      [Date.now(), assetId],
+    );
   }
 
   async listScreenshots(filters?: SearchFilters, limit: number = 100, offset: number = 0): Promise<ScreenshotRecord[]> {

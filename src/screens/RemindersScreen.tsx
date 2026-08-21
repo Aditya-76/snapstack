@@ -41,9 +41,18 @@ export function RemindersScreen({ navigation }: { navigation: { navigate: (scree
         renderSectionHeader={({ section }) => <Text style={styles.sectionTitle}>{section.title}</Text>}
         renderItem={({ item, section }) =>
           (section as { kind: 'suggested' | 'confirmed' }).kind === 'suggested' ? (
-            <ReminderCard reminder={item} onConfirm={() => void confirm(item.id)} onDismiss={() => void dismiss(item.id)} />
+            <ReminderCard
+              reminder={item}
+              onConfirm={() => void confirm(item.id)}
+              onDismiss={() => void dismiss(item.id)}
+              onOpenSource={() => navigation.navigate('Detail', { screenshotId: item.screenshotId })}
+            />
           ) : (
-            <ReminderCard reminder={item} onUndo={() => void undo(item.id)} />
+            <ReminderCard
+              reminder={item}
+              onUndo={() => void undo(item.id)}
+              onOpenSource={() => navigation.navigate('Detail', { screenshotId: item.screenshotId })}
+            />
           )
         }
         ListEmptyComponent={

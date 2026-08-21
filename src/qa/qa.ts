@@ -9,8 +9,11 @@ import { SnapStore } from '../db/store';
 import { Ml } from '../native';
 import { hybridSearch } from '../search/hybridSearch';
 import { CATEGORY_LABELS, QaAnswer, SearchFilters } from '../types';
+import { computeAggregate, detectAggregateIntent } from './aggregation';
 
 const TOP_K = 6;
+/** Aggregations scan wider than RAG so sums don't miss rows. */
+const AGGREGATE_TOP_K = 50;
 const MAX_CONTEXT_CHARS_PER_DOC = 700;
 
 export function buildPrompt(question: string, docs: Array<{ index: number; date: string; category: string; text: string }>): string {
@@ -43,7 +46,25 @@ export async function answerQuestion(
   store: SnapStore,
   question: string,
   filters?: SearchFilters,
+  now: Date = new Date(),
 ): Promise<QaAnswer> {
+  // Aggregation questions ("total spent on Swiggy in July") are computed
+  // deterministically from extracted amounts — no LLM needed, works in
+  // search-only mode too (PRD open question 4).
+  const intent = detectAggregateIntent(question, now);
+  if (intent) {
+    const wide = await hybridSearch(store, question, filters, AGGREGATE_TOP_K);
+    const aggregate = computeAggregate(intent, wide);
+    if (aggregate) {
+      return {
+        question,
+        answer: aggregate.text,
+        citations: aggregate.used.map(rec => ({ screenshot: rec, relevance: 1 })),
+        degradedToSearch: false,
+      };
+    }
+  }
+
   const results = await hybridSearch(store, question, filters, TOP_K);
   const citations = results.map(r => ({ screenshot: r.screenshot, relevance: r.score }));
 

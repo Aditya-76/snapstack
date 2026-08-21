@@ -24,6 +24,60 @@ class ThumbnailModule: NSObject {
     return digest.map { String(format: "%02x", $0) }.joined().prefix(24) + ".jpg"
   }
 
+  /// Remove a cached thumbnail (retention purge, PRD §6). Only touches files
+  /// inside our own thumbs directory.
+  @objc(deleteThumbnail:resolver:rejecter:)
+  func deleteThumbnail(_ path: String,
+                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                       rejecter reject: @escaping RCTPromiseRejectBlock) {
+    do {
+      let dir = try thumbsDirectory()
+      let url = URL(fileURLWithPath: path)
+      guard url.standardizedFileURL.path.hasPrefix(dir.standardizedFileURL.path) else {
+        reject("outside_thumbs", "refusing to delete outside the thumbs directory", nil)
+        return
+      }
+      if FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.removeItem(at: url)
+      }
+      resolve(nil)
+    } catch {
+      reject("delete_failed", error.localizedDescription, error)
+    }
+  }
+
+  /// Full-resolution render for the in-app viewer (PRD §4.6: "In-app viewer
+  /// is the contract" — Photos deep links are unsupported on iOS).
+  @objc(getFullImage:resolver:rejecter:)
+  func getFullImage(_ assetId: String,
+                    resolver resolve: @escaping RCTPromiseResolveBlock,
+                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+    let fetch = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+    guard let asset = fetch.firstObject else {
+      reject("not_found", "asset \(assetId) not found", nil)
+      return
+    }
+    let options = PHImageRequestOptions()
+    options.deliveryMode = .highQualityFormat
+    options.isNetworkAccessAllowed = false
+    PHImageManager.default().requestImage(
+      for: asset, targetSize: PHImageManagerMaximumSize, contentMode: .aspectFit, options: options
+    ) { image, _ in
+      guard let image = image, let data = image.jpegData(compressionQuality: 0.92) else {
+        reject("render_failed", "could not load full image", nil)
+        return
+      }
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("fullres-\(String(self.fileName(for: assetId)))")
+      do {
+        try data.write(to: url, options: .atomic)
+        resolve(url.path)
+      } catch {
+        reject("render_failed", error.localizedDescription, error)
+      }
+    }
+  }
+
   @objc(createThumbnail:maxDimension:quality:resolver:rejecter:)
   func createThumbnail(_ assetId: String, maxDimension: Int, quality: Int,
                        resolver resolve: @escaping RCTPromiseResolveBlock,

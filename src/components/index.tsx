@@ -75,7 +75,15 @@ export function ScreenshotCard({
   const preview = snippet ?? record.ocrText.slice(0, 120).replace(/\s+/g, ' ').trim();
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${CATEGORY_LABELS[record.category]} screenshot from ${dateLabel}${
+        record.sourceApp ? `, ${record.sourceApp}` : ''
+      }. Opens details.`}
+    >
       <View style={styles.thumbBox}>
         {record.thumbnailPath && !sensitive ? (
           <Image source={{ uri: `file://${record.thumbnailPath}` }} style={styles.thumb} resizeMode="cover" />
@@ -107,11 +115,14 @@ export function ReminderCard({
   onConfirm,
   onDismiss,
   onUndo,
+  onOpenSource,
 }: {
   reminder: ReminderSuggestion;
   onConfirm?: () => void;
   onDismiss?: () => void;
   onUndo?: () => void;
+  /** Open the source screenshot so the user can verify before confirming. */
+  onOpenSource?: () => void;
 }) {
   const when =
     reminder.fireAt != null
@@ -124,26 +135,48 @@ export function ReminderCard({
       : null;
   return (
     <View style={styles.reminderCard}>
-      <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        style={styles.reminderBody}
+        onPress={onOpenSource}
+        disabled={!onOpenSource}
+        accessibilityRole={onOpenSource ? 'button' : undefined}
+        accessibilityLabel={`${reminder.title}. ${onOpenSource ? 'Opens the source screenshot.' : ''}`}
+      >
         <Text style={typography.body}>{reminder.title}</Text>
         <Text style={typography.caption}>
           {reminder.auto ? 'Auto-created · ' : ''}
           {when ? `Reminds ${when}` : 'No time set'}
+          {onOpenSource ? ' · tap to view screenshot' : ''}
         </Text>
-      </View>
+      </TouchableOpacity>
       <View style={styles.reminderActions}>
         {onConfirm ? (
-          <TouchableOpacity style={styles.primaryButtonSmall} onPress={onConfirm}>
+          <TouchableOpacity
+            style={styles.primaryButtonSmall}
+            onPress={onConfirm}
+            accessibilityRole="button"
+            accessibilityLabel={`Add reminder: ${reminder.title}`}
+          >
             <Text style={styles.primaryButtonText}>Add</Text>
           </TouchableOpacity>
         ) : null}
         {onDismiss ? (
-          <TouchableOpacity style={styles.ghostButtonSmall} onPress={onDismiss}>
+          <TouchableOpacity
+            style={styles.ghostButtonSmall}
+            onPress={onDismiss}
+            accessibilityRole="button"
+            accessibilityLabel={`Dismiss reminder: ${reminder.title}`}
+          >
             <Text style={styles.ghostButtonText}>Dismiss</Text>
           </TouchableOpacity>
         ) : null}
         {onUndo ? (
-          <TouchableOpacity style={styles.ghostButtonSmall} onPress={onUndo}>
+          <TouchableOpacity
+            style={styles.ghostButtonSmall}
+            onPress={onUndo}
+            accessibilityRole="button"
+            accessibilityLabel={`Undo reminder: ${reminder.title}`}
+          >
             <Text style={styles.ghostButtonText}>Undo</Text>
           </TouchableOpacity>
         ) : null}
@@ -188,7 +221,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chipBackground,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
+    minHeight: 40,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -231,24 +265,29 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.md,
   },
+  reminderBody: { flex: 1, gap: 2 },
   reminderActions: { flexDirection: 'row', gap: spacing.sm },
   primaryButton: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentStrong,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
+    minHeight: 48,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   primaryButtonSmall: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentStrong,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   primaryButtonText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   ghostButtonSmall: {
     borderRadius: radius.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
   },

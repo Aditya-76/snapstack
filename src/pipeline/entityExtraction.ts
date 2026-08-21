@@ -52,13 +52,18 @@ interface DateMatch {
 export function findDates(text: string, referenceYear: number): DateMatch[] {
   const out: DateMatch[] = [];
 
-  // Numeric: dd/mm/yyyy, dd-mm-yy, dd.mm.yyyy
-  const numeric = /\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2}|\d{4}))?\b/g;
+  // Numeric: dd/mm/yyyy, dd-mm-yy, dd.mm.yyyy. The separator must repeat
+  // (backreference) and dotted forms need a year — otherwise decimals like
+  // "4.5 stars" would parse as dates.
+  const numeric = /\b(\d{1,2})([\/\-.])(\d{1,2})(?:\2(\d{2}|\d{4}))?\b/g;
   for (const m of text.matchAll(numeric)) {
     const day = parseInt(m[1], 10);
-    const month = parseInt(m[2], 10);
-    const year = normalizeYear(m[3], referenceYear);
-    // Yearless "20/08" needs both parts plausible; with year we trust it more.
+    const sep = m[2];
+    const month = parseInt(m[3], 10);
+    if (sep === '.' && !m[4]) {
+      continue;
+    }
+    const year = normalizeYear(m[4], referenceYear);
     const iso = isoDate(year, month, day);
     if (iso) {
       out.push({ raw: m[0], iso, index: m.index ?? 0 });
@@ -77,8 +82,10 @@ export function findDates(text: string, referenceYear: number): DateMatch[] {
     }
   }
 
-  // "Aug 20, 2026", "August 20"
-  const monthFirst = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{2,4})?\b/gi;
+  // "Aug 20, 2026", "August 20". The day must not be the first digits of a
+  // year ("valid till Aug 2026" has no day) — hence (?!\d) after the day and
+  // a boundary before the year.
+  const monthFirst = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?!\d)(?:st|nd|rd|th)?,?\s*(\d{2}|\d{4})?\b/gi;
   for (const m of text.matchAll(monthFirst)) {
     const month = MONTHS[m[1].toLowerCase().slice(0, 4)] ?? MONTHS[m[1].toLowerCase().slice(0, 3)];
     const day = parseInt(m[2], 10);
@@ -94,7 +101,8 @@ export function findDates(text: string, referenceYear: number): DateMatch[] {
 
 const DUE_CONTEXT = /\b(due|pay\s*by|payable\s*by|last\s*date|expires?\s*(on)?|valid\s*(till|until|upto|up\s*to)|before)\b/i;
 
-const AMOUNT_RE = /(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d{1,2})?)|(?<![\d.])([\d,]{1,12}(?:\.\d{1,2})?)\s*(?:₹|\/-|rupees)/gi;
+// Word boundaries before rs/inr so "offers 20" / "users 300" don't match.
+const AMOUNT_RE = /(?:₹|\brs\.?|\binr\b)\s*([\d,]+(?:\.\d{1,2})?)|(?<![\d.])([\d,]{1,12}(?:\.\d{1,2})?)\s*(?:₹|\/-|\brupees\b)/gi;
 
 const UPI_VPA_RE = /\b[a-z0-9][a-z0-9._-]{1,49}@(?:ok(?:axis|hdfcbank|icici|sbi)|ybl|paytm|apl|upi|ibl|axl|oksbi|okicici|okhdfcbank|okaxis|fbl|jupiteraxis|yapl|pthdfc|axisb|barodampay|kotak|hsbc|idfcbank|rbl|sliceaxis|waaxis|wahdfcbank|waicici|wasbi)\b/gi;
 
@@ -109,13 +117,23 @@ const PNR_RE = /\bpnr\s*(?:no|number|status)?\s*[:#.]?\s*(\d{3}[- ]?\d{7}|\d{10}
 // with at least one digit (checked after matching).
 const FLIGHT_PNR_RE = /\b(?:booking\s*(?:id|ref(?:erence)?|no)|confirmation\s*(?:no|code|number)|pnr)\s*[:#.]?\s*([A-Za-z0-9]{6})\b/gi;
 
-const PHONE_RE = /(?:\+91[\s-]?|0)?([6-9]\d{4})[\s-]?(\d{5})\b/g;
+// (?<![\d-]) blocks matches inside longer digit runs (e.g. 12-digit UTRs).
+const PHONE_RE = /(?<![\d-])(?:\+91[\s-]?|0)?([6-9]\d{4})[\s-]?(\d{5})\b/g;
 
 const EMAIL_RE = /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/gi;
 
-const COUPON_RE = /\b(?:code|coupon|promo(?:\s*code)?|use|apply)\s*[:#]?\s*["']?([A-Z0-9]{4,15})["']?/g;
+// Label matches case-insensitively (promo banners are usually ALL CAPS);
+// "use/apply" may be followed by "code/coupon" before the actual code. The
+// captured code must be uppercase+digits — enforced after matching, since the
+// i flag makes character classes case-insensitive too.
+const COUPON_RE = /\b(?:(?:use|apply)\s+(?:code|coupon)?|code|coupon|promo\s*(?:code)?|voucher)\s*[:#]?\s*["']?([A-Za-z0-9]{4,15})\b["']?/gi;
 
 const TRACKING_RE = /\b(?:tracking\s*(?:id|no|number)|awb\s*(?:no|number)?|consignment\s*(?:no|number)?)\s*[:#.]?\s*([A-Z0-9]{8,20})\b/gi;
+
+// Indian addresses: anchored on a 6-digit PIN code, expanded to the
+// surrounding line(s) when they carry address-y vocabulary.
+const PINCODE_RE = /\b[1-9]\d{5}\b/g;
+const ADDRESS_HINT_RE = /\b(road|rd|street|st|nagar|layout|colony|sector|block|apartment|apts?|flat|floor|cross|main|phase|extension|extn|near|opp(?:osite)?|behind|house|plot|door|village|taluk|district|dist)\b/i;
 
 // Words that COUPON_RE's generic "use/apply CODE" form must not swallow.
 const COUPON_STOPWORDS = new Set([
@@ -232,9 +250,13 @@ export function extractEntities(text: string, now: Date = new Date()): Entity[] 
   // --- Coupon codes (+ expiry from nearby "valid till" dates) ---
   for (const m of text.matchAll(COUPON_RE)) {
     const code = m[1];
-    // Require at least one digit or length >= 5 to avoid matching plain words,
-    // and skip common UI words.
-    if (COUPON_STOPWORDS.has(code) || (!/\d/.test(code) && code.length < 5)) {
+    // Real codes are uppercase+digits; require a digit or length >= 5 to
+    // avoid plain words, and skip common UI words.
+    if (
+      code !== code.toUpperCase() ||
+      COUPON_STOPWORDS.has(code) ||
+      (!/\d/.test(code) && code.length < 5)
+    ) {
       continue;
     }
     entities.push({ type: 'coupon_code', raw: m[0].trim(), value: code, confidence: 0.8 });
@@ -245,6 +267,22 @@ export function extractEntities(text: string, now: Date = new Date()): Entity[] 
       if (dates.length > 0) {
         entities.push({ type: 'coupon_expiry', raw: dates[0].raw, value: dates[0].iso, confidence: 0.8 });
       }
+    }
+  }
+
+  // --- Addresses (PIN-code anchored; powers "open in maps", PRD §4.5) ---
+  for (const m of text.matchAll(PINCODE_RE)) {
+    const idx = m.index ?? 0;
+    // Take up to two lines before the PIN and the rest of its line.
+    const before = text.slice(0, idx);
+    const lines = before.split('\n');
+    const context = lines.slice(-3).join(', ');
+    const after = text.slice(idx).split('\n')[0];
+    const candidate = `${context} ${after}`.replace(/\s+/g, ' ').trim();
+    if (ADDRESS_HINT_RE.test(candidate) && candidate.length >= 20) {
+      // Trim leading non-address chatter to keep the maps query tight.
+      const trimmed = candidate.length > 160 ? candidate.slice(candidate.length - 160) : candidate;
+      entities.push({ type: 'address', raw: trimmed, value: trimmed, confidence: 0.7 });
     }
   }
 

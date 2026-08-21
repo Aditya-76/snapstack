@@ -16,6 +16,7 @@ export function makeRecord(overrides: Partial<ScreenshotRecord> & { ocrText: str
     sourceApp: null,
     thumbnailPath: null,
     originalDeleted: false,
+    originalDeletedAt: null,
     embedding: hashEmbed(overrides.ocrText),
     ...overrides,
   };

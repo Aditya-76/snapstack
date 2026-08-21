@@ -12,8 +12,10 @@ export const colors = {
   border: '#2D333B',
   textPrimary: '#E6EDF3',
   textSecondary: '#9BA7B4',
-  textTertiary: '#6E7A87',
+  textTertiary: '#8B98A5',
   accent: '#4C8DFF',
+  /** Button fill — darker than `accent` so white label text passes WCAG AA. */
+  accentStrong: '#2563EB',
   accentSoft: '#1B2A45',
   success: '#3FB950',
   warning: '#D29922',
@@ -54,5 +56,5 @@ export const typography = {
   heading: { fontSize: 18, fontWeight: '600' as const, color: colors.textPrimary },
   body: { fontSize: 15, fontWeight: '400' as const, color: colors.textPrimary },
   secondary: { fontSize: 13, fontWeight: '400' as const, color: colors.textSecondary },
-  caption: { fontSize: 11, fontWeight: '500' as const, color: colors.textTertiary },
+  caption: { fontSize: 12, fontWeight: '500' as const, color: colors.textTertiary },
 };

@@ -39,6 +39,25 @@ class ThumbnailModule(private val reactContext: ReactApplicationContext) :
     return digest.joinToString("") { "%02x".format(it) }.take(24) + ".webp"
   }
 
+  /** Remove a cached thumbnail (retention purge, PRD §6). Only within thumbs dir. */
+  @ReactMethod
+  fun deleteThumbnail(path: String, promise: Promise) {
+    try {
+      val file = File(path).canonicalFile
+      val dir = thumbDir().canonicalFile
+      if (!file.path.startsWith(dir.path)) {
+        promise.reject("outside_thumbs", "refusing to delete outside the thumbs directory")
+        return
+      }
+      if (file.exists()) {
+        file.delete()
+      }
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.reject("delete_failed", e)
+    }
+  }
+
   @ReactMethod
   fun createThumbnail(assetId: String, maxDimension: Int, quality: Int, promise: Promise) {
     try {

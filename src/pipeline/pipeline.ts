@@ -117,6 +117,7 @@ export async function indexScreenshot(
     sourceApp: inferSourceApp(text),
     thumbnailPath,
     originalDeleted: false,
+    originalDeletedAt: null,
     embedding,
   };
   await store.upsertScreenshot(record);
@@ -162,6 +163,16 @@ export async function backfill(
     onProgress({ processed, total: assets.length, done: processed >= assets.length });
     // Yield to the JS event loop between chunks so the UI stays responsive.
     await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
+  if (assets.length > 0) {
+    await store.appendActivity({
+      id: newId('act'),
+      at: Date.now(),
+      kind: 'backfill_completed',
+      message: `Indexed ${processed} existing screenshot${processed === 1 ? '' : 's'}`,
+      screenshotId: null,
+      reminderId: null,
+    });
   }
   return processed;
 }

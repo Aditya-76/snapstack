@@ -102,17 +102,22 @@ export interface ScreenshotRecord {
   thumbnailPath: string | null;
   /** True once the gallery original has been deleted; intelligence survives. */
   originalDeleted: boolean;
+  /** Epoch ms when we noticed the original was deleted; drives purge policy. */
+  originalDeletedAt: number | null;
   /** float32 embedding of the OCR text; null until embedding model has run. */
   embedding: Float32Array | null;
 }
 
+/**
+ * Search filters. Sensitive categories (Aadhaar/PAN) are always findable —
+ * per PRD §7.7 only their *previews* are masked by default, which is a UI
+ * concern (ScreenshotCard), not a retrieval one.
+ */
 export interface SearchFilters {
   categories?: Category[];
   fromDate?: number;
   toDate?: number;
   sourceApp?: string;
-  /** Include sensitive categories in results/previews. Default false. */
-  includeSensitive?: boolean;
 }
 
 export interface SearchResult {
@@ -172,6 +177,8 @@ export interface Settings {
   /** Whether the optional LLM pack has been downloaded ("Enable Q&A"). */
   llmPackInstalled: boolean;
   onboardingCompleted: boolean;
+  /** Watermark (epoch ms) of the last capture sweep, so closed-app gaps aren't lost. */
+  lastSweepMs: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -183,6 +190,7 @@ export const DEFAULT_SETTINGS: Settings = {
   backfillWindow: 'none',
   llmPackInstalled: false,
   onboardingCompleted: false,
+  lastSweepMs: 0,
 };
 
 export interface QaCitation {

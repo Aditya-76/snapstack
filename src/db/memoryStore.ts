@@ -12,20 +12,11 @@ import {
   ScreenshotRecord,
   SearchFilters,
   Settings,
-  SENSITIVE_CATEGORIES,
 } from '../types';
 import { KeywordHit, SnapStore, makeSnippet, tokenize } from './store';
 
 export function passesFilters(record: ScreenshotRecord, filters: SearchFilters = {}): boolean {
   if (filters.categories && filters.categories.length > 0 && !filters.categories.includes(record.category)) {
-    return false;
-  }
-  if (
-    !filters.includeSensitive &&
-    SENSITIVE_CATEGORIES.includes(record.category) &&
-    !(filters.categories ?? []).some(c => SENSITIVE_CATEGORIES.includes(c))
-  ) {
-    // Sensitive categories are hidden unless explicitly filtered-for or opted-in (PRD §7.7).
     return false;
   }
   if (filters.fromDate != null && record.takenAt < filters.fromDate) {
@@ -73,6 +64,9 @@ export class MemoryStore implements SnapStore {
     for (const rec of this.screenshots.values()) {
       if (rec.assetId === assetId) {
         rec.originalDeleted = true;
+        if (rec.originalDeletedAt == null) {
+          rec.originalDeletedAt = Date.now();
+        }
       }
     }
   }

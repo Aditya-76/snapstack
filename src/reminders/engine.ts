@@ -185,6 +185,47 @@ export async function processSuggestions(
   return suggestions;
 }
 
+/**
+ * Explicit user intent from the detail view: create the reminders for this
+ * screenshot as confirmed in one tap (PRD §4.5 "One tap confirms"), deduped
+ * against reminders that already exist for it.
+ */
+export async function setRemindersForScreenshot(
+  store: SnapStore,
+  record: ScreenshotRecord,
+  now: Date = new Date(),
+): Promise<ReminderSuggestion[]> {
+  const detected = detectActions(record, now);
+  if (detected.length === 0) {
+    return [];
+  }
+  const existing = (await store.listReminders()).filter(r => r.screenshotId === record.id);
+  const created: ReminderSuggestion[] = [];
+  for (const suggestion of detected) {
+    const duplicate = existing.find(
+      r => r.actionType === suggestion.actionType && r.fireAt === suggestion.fireAt && r.status !== 'dismissed' && r.status !== 'undone',
+    );
+    if (duplicate) {
+      if (duplicate.status === 'suggested') {
+        await confirmReminder(store, duplicate.id);
+        created.push({ ...duplicate, status: 'confirmed' });
+      }
+      continue;
+    }
+    suggestion.status = 'confirmed';
+    await store.upsertReminder(suggestion);
+    await scheduleNotification(suggestion);
+    await log(store, {
+      kind: 'reminder_confirmed',
+      message: `Reminder set: ${suggestion.title}`,
+      screenshotId: record.id,
+      reminderId: suggestion.id,
+    });
+    created.push(suggestion);
+  }
+  return created;
+}
+
 export async function confirmReminder(store: SnapStore, reminderId: string): Promise<void> {
   const reminder = await store.getReminder(reminderId);
   if (!reminder) {
@@ -239,11 +280,19 @@ export async function undoReminder(store: SnapStore, reminderId: string): Promis
   });
 }
 
+let notificationPermissionRequested = false;
+
 async function scheduleNotification(reminder: ReminderSuggestion): Promise<void> {
   if (!Notifications || reminder.fireAt == null) {
     return;
   }
   try {
+    // Runtime-gated on Android 13+ and iOS; ask lazily at the first moment a
+    // reminder actually needs it, when the value is obvious to the user.
+    if (!notificationPermissionRequested) {
+      notificationPermissionRequested = true;
+      await Notifications.requestPermission();
+    }
     await Notifications.schedule(reminder.id, 'Screenshot Brain', reminder.title, reminder.fireAt);
   } catch (e) {
     console.warn('[reminders] schedule failed', e);

@@ -25,6 +25,27 @@ RCT_EXTERN_METHOD(recognize:(NSString *)assetId
 @interface RCT_EXTERN_MODULE(ThumbnailModule, NSObject)
 RCT_EXTERN_METHOD(createThumbnail:(NSString *)assetId maxDimension:(NSInteger)maxDimension quality:(NSInteger)quality
                   resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(getFullImage:(NSString *)assetId
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(deleteThumbnail:(NSString *)path
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+@end
+
+@interface RCT_EXTERN_MODULE(BackupModule, NSObject)
+RCT_EXTERN_METHOD(exportFile:(NSString *)fileName content:(NSString *)content
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(importFile:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+@end
+
+@interface RCT_EXTERN_MODULE(AppLockModule, NSObject)
+RCT_EXTERN_METHOD(isAvailable:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(authenticate:(NSString *)reason
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+@end
+
+@interface RCT_EXTERN_MODULE(SecureStoreModule, NSObject)
+RCT_EXTERN_METHOD(getOrCreateSecret:(NSString *)alias
+                  resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 @end
 
 @interface RCT_EXTERN_MODULE(NotificationsModule, NSObject)

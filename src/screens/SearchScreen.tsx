@@ -28,6 +28,9 @@ export function SearchScreen({ navigation }: { navigation: { navigate: (screen: 
     results,
     searching,
     settings,
+    backfillRunning,
+    backfillProcessed,
+    backfillTotal,
     refreshLibrary,
     setQuery,
     runSearch,
@@ -103,11 +106,23 @@ export function SearchScreen({ navigation }: { navigation: { navigate: (screen: 
         />
       </View>
       <CategoryChips active={activeCategory} counts={categoryCounts} onSelect={setActiveCategory} />
+      {backfillRunning ? (
+        <View style={styles.backfillBanner}>
+          <Text style={styles.backfillText}>
+            Indexing your screenshots… {backfillTotal > 0 ? `${backfillProcessed} of ${backfillTotal}` : 'scanning gallery'}
+          </Text>
+        </View>
+      ) : null}
       {showingSearch ? (
         <FlatList
           data={results}
           keyExtractor={r => r.screenshot.id}
           renderItem={renderResult}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          ListHeaderComponent={
+            searching && results.length > 0 ? <Text style={styles.status}>Searching…</Text> : undefined
+          }
           ListEmptyComponent={
             searching ? (
               <Text style={styles.status}>Searching…</Text>
@@ -121,12 +136,21 @@ export function SearchScreen({ navigation }: { navigation: { navigate: (screen: 
           data={screenshots}
           keyExtractor={r => r.id}
           renderItem={renderRecord}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={12}
+          windowSize={7}
+          removeClippedSubviews
           ListEmptyComponent={
-            <EmptyState
-              icon="📸"
-              title="No screenshots yet"
-              subtitle="New screenshots are indexed automatically. You can also run a backfill from Settings."
-            />
+            backfillRunning ? (
+              <EmptyState icon="⏳" title="Indexing…" subtitle="Your screenshots will appear here as they're processed." />
+            ) : (
+              <EmptyState
+                icon="📸"
+                title="No screenshots yet"
+                subtitle="New screenshots are indexed automatically. You can also index existing ones from Settings."
+              />
+            )
           }
         />
       )}
@@ -149,4 +173,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   status: { ...typography.secondary, textAlign: 'center', paddingVertical: spacing.xl },
+  backfillBanner: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 8,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  backfillText: { color: colors.accent, fontSize: 13 },
 });

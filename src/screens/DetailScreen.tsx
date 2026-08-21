@@ -10,6 +10,7 @@ import {
   Clipboard,
   Image,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -20,8 +21,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CategoryBadge, PrimaryButton } from '../components';
 import { getStore } from '../db';
-import { ScreenshotObserver } from '../native';
-import { availableQuickActions, detectActions } from '../reminders/engine';
+import { ScreenshotObserver, Thumbnails } from '../native';
+import { availableQuickActions, setRemindersForScreenshot } from '../reminders/engine';
 import { useAppStore } from '../store/appStore';
 import { colors, radius, spacing, typography } from '../theme';
 import { Entity, ScreenshotRecord } from '../types';
@@ -49,6 +50,7 @@ export function DetailScreen({
 }) {
   const { screenshotId } = route.params;
   const [record, setRecord] = useState<ScreenshotRecord | null>(null);
+  const [viewerPath, setViewerPath] = useState<string | null>(null);
   const { refreshReminders } = useAppStore();
 
   useEffect(() => {
@@ -66,29 +68,54 @@ export function DetailScreen({
       Alert.alert('Original deleted', 'The gallery image was deleted, but the extracted data is kept here.');
       return;
     }
-    if (ScreenshotObserver) {
-      const opened = await ScreenshotObserver.openInGallery(record.assetId);
-      if (!opened && Platform.OS === 'ios') {
-        Alert.alert('Viewer', 'Opening full-resolution view inside the app.');
+    if (!ScreenshotObserver) {
+      return;
+    }
+    const opened = await ScreenshotObserver.openInGallery(record.assetId);
+    if (!opened) {
+      // iOS: Photos deep links are unsupported — full-res in-app viewer is
+      // the contract (PRD §4.6).
+      if (Thumbnails?.getFullImage) {
+        try {
+          setViewerPath(await Thumbnails.getFullImage(record.assetId));
+          return;
+        } catch (e) {
+          console.warn('[detail] full image failed', e);
+        }
+      }
+      if (record.thumbnailPath) {
+        setViewerPath(record.thumbnailPath);
       }
     }
   }, [record]);
 
+  // Explicit intent → one tap sets the reminder (PRD §4.5), deduped.
   const addReminder = useCallback(async () => {
     if (!record) {
       return;
     }
     const store = await getStore();
-    const suggestions = detectActions(record);
-    if (suggestions.length === 0) {
+    const created = await setRemindersForScreenshot(store, record);
+    if (created.length === 0) {
       Alert.alert('No dates found', 'This screenshot has no upcoming due date or event to remind you about.');
       return;
     }
-    for (const s of suggestions) {
-      await store.upsertReminder(s);
-    }
     await refreshReminders();
-    Alert.alert('Suggested', 'Check the Reminders tab to confirm.');
+    Alert.alert('Reminder set', created.map(c => c.title).join('\n'), [
+      {
+        text: 'Undo',
+        onPress: () => {
+          void (async () => {
+            const { undoReminder } = await import('../reminders/engine');
+            for (const c of created) {
+              await undoReminder(store, c.id);
+            }
+            await refreshReminders();
+          })();
+        },
+      },
+      { text: 'OK' },
+    ]);
   }, [record, refreshReminders]);
 
   const runQuickAction = useCallback((type: string, value: string) => {
@@ -98,7 +125,11 @@ export function DetailScreen({
     } else if (type === 'call_number') {
       void Linking.openURL(`tel:${value}`);
     } else if (type === 'open_address') {
-      void Linking.openURL(`geo:0,0?q=${encodeURIComponent(value)}`);
+      const url =
+        Platform.OS === 'ios'
+          ? `http://maps.apple.com/?q=${encodeURIComponent(value)}`
+          : `geo:0,0?q=${encodeURIComponent(value)}`;
+      void Linking.openURL(url);
     }
   }, []);
 
@@ -170,11 +201,32 @@ export function DetailScreen({
 
         <View style={styles.buttons}>
           <PrimaryButton label={Platform.OS === 'android' ? 'Open in Gallery' : 'View full size'} onPress={() => void openOriginal()} />
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => void addReminder()}>
-            <Text style={styles.secondaryButtonText}>Suggest reminder</Text>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => void addReminder()}
+            accessibilityRole="button"
+            accessibilityLabel="Set reminder from this screenshot"
+          >
+            <Text style={styles.secondaryButtonText}>Set reminder</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal visible={viewerPath != null} animationType="fade" onRequestClose={() => setViewerPath(null)}>
+        <View style={styles.viewer}>
+          {viewerPath ? (
+            <Image source={{ uri: `file://${viewerPath}` }} style={styles.viewerImage} resizeMode="contain" />
+          ) : null}
+          <TouchableOpacity
+            style={styles.viewerClose}
+            onPress={() => setViewerPath(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close full-size view"
+          >
+            <Text style={styles.viewerCloseText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -219,7 +271,22 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
+    minHeight: 48,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryButtonText: { color: colors.textSecondary, fontWeight: '600', fontSize: 14 },
+  viewer: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '100%' },
+  viewerClose: {
+    position: 'absolute',
+    top: 48,
+    right: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  viewerCloseText: { color: '#fff', fontWeight: '600' },
 });

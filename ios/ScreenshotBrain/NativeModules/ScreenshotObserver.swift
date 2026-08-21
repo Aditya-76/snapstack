@@ -105,6 +105,13 @@ class ScreenshotObserver: RCTEventEmitter, PHPhotoLibraryChangeObserver {
   func assetExists(_ assetId: String,
                    resolver resolve: @escaping RCTPromiseResolveBlock,
                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+    // Under 'limited' or denied access, assets we indexed are invisible
+    // without being deleted — "unknown" must never read as "deleted", so
+    // reject and let the retention sweep skip (it also requires 'granted').
+    guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .authorized else {
+      reject("no_permission", "full photo access not granted", nil)
+      return
+    }
     let result = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
     resolve(result.count > 0)
   }

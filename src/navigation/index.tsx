@@ -50,8 +50,15 @@ function Tabs() {
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        tabBarAccessibilityLabel: `${route.name} tab`,
         tabBarIcon: ({ focused }) => (
-          <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.5 }}>{TAB_ICONS[route.name] ?? '•'}</Text>
+          <Text
+            style={{ fontSize: 18, opacity: focused ? 1 : 0.5 }}
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+          >
+            {TAB_ICONS[route.name] ?? '•'}
+          </Text>
         ),
       })}
     >

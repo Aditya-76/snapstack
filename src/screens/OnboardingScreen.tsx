@@ -1,16 +1,15 @@
 /**
  * Onboarding (PRD §4.1): privacy explainer → photo permission → optional
  * backfill window → optional model download. Copy is honest about the iOS
- * background-processing gap (§7.1).
+ * background-processing gap (§7.1). Backfill runs in the background — the
+ * user lands in the app immediately and watches progress from the Search tab.
  */
 
 import React, { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../components';
-import { getStore } from '../db';
 import { ScreenshotObserver } from '../native';
-import { backfill, backfillSinceMs } from '../pipeline/pipeline';
 import { startCapture } from '../capture/captureService';
 import { useAppStore } from '../store/appStore';
 import { colors, radius, spacing, typography } from '../theme';
@@ -21,14 +20,14 @@ type Step = 'privacy' | 'permission' | 'backfill' | 'done';
 const BACKFILL_OPTIONS: Array<{ value: BackfillWindow; label: string; hint: string }> = [
   { value: 'last_30_days', label: 'Last 30 days', hint: 'Quick — a few minutes' },
   { value: 'last_6_months', label: 'Last 6 months', hint: 'Recommended' },
-  { value: 'all', label: 'Everything', hint: 'Runs in the background, best while charging' },
+  { value: 'all', label: 'Everything', hint: 'Continues in the background — best on charge' },
   { value: 'none', label: 'Skip for now', hint: 'Only new screenshots will be indexed' },
 ];
 
 export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState<Step>('privacy');
-  const [progress, setProgress] = useState<string | null>(null);
-  const { settings, updateSettings } = useAppStore();
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const { updateSettings, startBackfill, startLlmDownload } = useAppStore();
 
   const requestPermission = async () => {
     if (!ScreenshotObserver) {
@@ -40,34 +39,43 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     if (status === 'denied') {
       Alert.alert(
         'Permission needed',
-        'Screenshot Brain only reads your screenshots, on this phone. You can grant access anytime from system settings.',
+        'Screenshot Brain only reads your screenshots, and only on this phone. Without access it has nothing to index.',
+        [
+          { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+          { text: 'Not now', style: 'cancel' },
+        ],
       );
       return;
+    }
+    setPermissionGranted(true);
+    if (status === 'limited') {
+      Alert.alert(
+        'Limited access',
+        'Only the photos you selected will be indexed. You can widen the selection anytime from system settings.',
+      );
     }
     setStep('backfill');
   };
 
   const chooseBackfill = async (window: BackfillWindow) => {
     await updateSettings({ backfillWindow: window });
-    if (window !== 'none' && ScreenshotObserver) {
-      setProgress('Scanning your screenshots…');
-      try {
-        const store = await getStore();
-        const assets = await ScreenshotObserver.listScreenshots(backfillSinceMs(window), 10000, 0);
-        await backfill(store, assets, { ...settings, backfillWindow: window }, p =>
-          setProgress(`Indexed ${p.processed} of ${p.total}`),
-        );
-      } catch (e) {
-        console.warn('[onboarding] backfill failed', e);
-      }
-      setProgress(null);
+    if (window !== 'none') {
+      // Non-blocking: progress shows in the Search tab banner.
+      void startBackfill(window);
     }
     setStep('done');
   };
 
-  const finish = async () => {
+  const finish = async (withLlmDownload: boolean) => {
     await updateSettings({ onboardingCompleted: true });
     await startCapture();
+    if (withLlmDownload) {
+      try {
+        await startLlmDownload();
+      } catch (e) {
+        Alert.alert('Download unavailable', e instanceof Error ? e.message : String(e));
+      }
+    }
     onComplete();
   };
 
@@ -105,11 +113,16 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             <Text style={styles.body}>
               {Platform.OS === 'ios'
                 ? 'You can limit access to just your screenshots. New screenshots are processed when you open the app or in background refresh windows.'
-                : 'We watch the Screenshots folder and index new screenshots in near-real-time.'}
+                : 'We watch the Screenshots folder and index new screenshots while the app is running, plus a catch-up scan every time you open it.'}
             </Text>
             <PrimaryButton label="Grant access" onPress={() => void requestPermission()} />
-            <TouchableOpacity onPress={() => setStep('backfill')}>
-              <Text style={styles.skip}>Not now</Text>
+            <TouchableOpacity
+              onPress={() => setStep('done')}
+              accessibilityRole="button"
+              accessibilityLabel="Skip granting access for now"
+              style={styles.skipTouchable}
+            >
+              <Text style={styles.skip}>Not now — I'll do it later from Settings</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -118,17 +131,22 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
           <View style={styles.step}>
             <Text style={styles.emoji}>📦</Text>
             <Text style={typography.title}>Index your existing screenshots?</Text>
-            <Text style={styles.body}>Choose how far back to scan. You can always do this later from Settings.</Text>
-            {progress ? (
-              <Text style={styles.progress}>{progress}</Text>
-            ) : (
-              BACKFILL_OPTIONS.map(opt => (
-                <TouchableOpacity key={opt.value} style={styles.option} onPress={() => void chooseBackfill(opt.value)}>
-                  <Text style={typography.body}>{opt.label}</Text>
-                  <Text style={typography.caption}>{opt.hint}</Text>
-                </TouchableOpacity>
-              ))
-            )}
+            <Text style={styles.body}>
+              Choose how far back to scan. Indexing continues in the background — you can start using the app right
+              away and watch progress on the Search tab.
+            </Text>
+            {BACKFILL_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={styles.option}
+                onPress={() => void chooseBackfill(opt.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`${opt.label}. ${opt.hint}`}
+              >
+                <Text style={typography.body}>{opt.label}</Text>
+                <Text style={typography.caption}>{opt.hint}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         ) : null}
 
@@ -137,10 +155,19 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             <Text style={styles.emoji}>✨</Text>
             <Text style={typography.title}>You're set</Text>
             <Text style={styles.body}>
-              Search works right away. To ask questions in plain language ("how much was my electricity bill?"),
-              download the optional on-device Q&A model from Settings — about 400 MB, one time.
+              {permissionGranted
+                ? 'Search works right away. To ask questions in plain language ("how much was my electricity bill?"), add the optional on-device Q&A model — a one-time ~400 MB download that stays on your phone.'
+                : 'You can grant screenshot access anytime from Settings — until then the app has nothing to index. The optional Q&A model (~400 MB, on-device) can also be added later.'}
             </Text>
-            <PrimaryButton label="Start using Screenshot Brain" onPress={() => void finish()} />
+            <PrimaryButton label="Start using Screenshot Brain" onPress={() => void finish(false)} />
+            <TouchableOpacity
+              onPress={() => void finish(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Start and download the Q&A model, about 400 megabytes"
+              style={styles.secondaryOption}
+            >
+              <Text style={styles.secondaryOptionText}>Start + download Q&A model (~400 MB, Wi-Fi)</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
@@ -171,6 +198,16 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.xs,
   },
-  skip: { color: colors.textTertiary, textAlign: 'center', fontSize: 14, paddingVertical: spacing.sm },
-  progress: { ...typography.body, color: colors.accent, textAlign: 'center', paddingVertical: spacing.lg },
+  skipTouchable: { minHeight: 44, justifyContent: 'center' },
+  skip: { color: colors.textSecondary, textAlign: 'center', fontSize: 14 },
+  secondaryOption: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryOptionText: { color: colors.accent, fontWeight: '600', fontSize: 14 },
 });
